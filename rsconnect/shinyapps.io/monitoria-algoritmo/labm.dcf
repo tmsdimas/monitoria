@@ -1,0 +1,11 @@
+name: labm
+title:
+username:
+account: monitoria-algoritmo
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 5943517
+bundleId: 5732012
+url: https://monitoria-algoritmo.shinyapps.io/labm/
+when: 1648376049.2361
+lastSyncTime: 1648376049.2361

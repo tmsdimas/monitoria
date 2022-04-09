@@ -1,0 +1,397 @@
+---
+title: "Monitoria Algoritmo HIV"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+
+library(googlesheets4)
+library(readxl)
+library(plotly)
+library(tidyverse)
+library(flexdashboard)
+library(shiny)
+library(shinyWidgets)
+library(shinydashboard)
+library(dplyr)
+library(ggplot2)
+library(curl)
+
+#------------------ Definação das Cores Globais --------------------------------
+
+bloco1_total     <- 'black'
+bloco2_cslumbo   <- "#1fb43f"
+bloco3_csmilange  <- "#5f30be"
+bloco4_csamilcar   <- "#d48831"
+
+#------------------ Carga de Dados ---------------------------------------------
+
+#rgs4_auth()
+#0
+
+dados <- read_sheet("https://docs.google.com/spreadsheets/d/1lvWC42HS621jt4ui9YhUsRy9y5mtp-gcSJG9WVWCyZg/edit#gid=1673914035")
+
+#--------------------Visualização-----------------------------------------------
+
+# Altera as variáveis para o tipo fator (exceto a data)
+
+dados$Unidade_Sanitária <- as.factor(dados$Unidade_Sanitária)  
+dados$Porta_Testagem <- as.factor(dados$Porta_Testagem)  
+dados$Sexo <- as.factor(dados$Sexo)
+dados$Resultado <- as.factor(dados$Resultado)
+dados$Resultado_PCR <- as.factor(dados$Resultado_PCR)
+
+#------------------ Limpeza e Processamento dos Dados Gerais ------------------
+
+
+## Diferença entreos dias da Primeira a terceira visita,adição de mais duas colunas
+
+if(is.null(dados$Data_Visita2)) {
+  dados[["DaysVisita1_2"]] <- as.numeric(difftime(Sys.Date(),dados$Data_Visita2, units="days"))
+} else if (!is.null(dados$Data_Visita2)) {
+  dados[["DaysVisita1_2"]] <- as.numeric(difftime(dados$Data_Visita2,dados$Data, units="days")) 
+} 
+
+
+if(is.null(dados$DataVisita3)) {
+  dados[["DaysVisita2_3"]] <- as.numeric(difftime(Sys.Date(),dados$DataVisita3, units="days"))
+} else if (!is.null(dados$DataVisita3)) {
+  dados[["DaysVisita2_3"]] <- as.numeric(difftime(dados$DataVisita3,dados$Data_Visita2, units="days"))
+} 
+
+Data_table_V2 <-dplyr::filter(dados, !is.na(Data_Visita2))  #Filtrar datas Null ou NA
+
+
+## Casos diários
+
+total_casos <- dados %>% 
+  group_by(Unidade_Sanitária) %>%
+  count(Unidade_Sanitária) %>% 
+  rename(Contatos = n) %>% 
+  spread(Unidade_Sanitária, Contatos) %>% 
+  mutate(total = `CS Amílcar Cabral` + `CS de lumbo` + `CS de Milange`)
+
+
+df_diario <- dados %>% 
+  group_by(Data, Unidade_Sanitária) %>% 
+  count(Unidade_Sanitária) %>% 
+  rename(Contatos = n) %>% 
+  spread(Unidade_Sanitária, Contatos, fill = 0) %>% 
+  arrange(Data) %>% 
+  ungroup() %>%
+  mutate(CS_Lumbo_cum = cumsum(`CS de lumbo`),
+        CS_Milange_cum = cumsum(`CS de Milange`),
+        CS_Amilcar_Cabral_cum = cumsum(`CS Amílcar Cabral`))
+
+
+## Casos da segunda visita
+total_casos_visita_2 <- dados %>% 
+  group_by(Unidade_Sanitária) %>%
+  count(!is.na(Data_Visita2)) %>% 
+  rename(Contagem_Visita2 = n)
+total_casos_visita_2[is.na(total_casos_visita_2)] <- 0
+
+
+## Casos da terceira visita
+total_casos_visita_3 <- dados %>% 
+  group_by(Unidade_Sanitária) %>%
+  count(!is.na(DataVisita3)) %>% 
+  rename(Contagem_Visita3 = n)
+total_casos_visita_3[is.na(total_casos_visita_3)] <- 0
+
+
+```
+
+# Dashboard {data-icon="fa-globe"}
+
+
+
+## Row {data-width="350"}
+
+
+### Total
+
+```{r}
+
+renderValueBox({
+  valueBox(value = paste(format(total_casos$total, big.mark = ","), "", sep = " "),
+        subtitle = "Total Casos",
+         #icon = icon ("far fa-flag"), 
+         color = bloco1_total)
+})
+```
+
+### CS Amílcar Cabral
+
+```{r}
+renderValueBox({
+  valueBox(value = paste(format(total_casos$`CS Amílcar Cabral`, big.mark = ","), " (",
+                       round(100 * total_casos$`CS Amílcar Cabral`/ total_casos$total), "%)", sep = ""), 
+         subtitle = "Centro Saúde Amilcar Cabral", 
+         #icon = "fa-solid fa-house-chimney-medical", 
+         color = "orange")
+})
+```
+
+### CS Lumbo
+
+```{r}
+renderValueBox({
+  valueBox(value = paste(format(total_casos$`CS de lumbo`, big.mark = ","), " (",
+                       round(100 * total_casos$`CS de lumbo`/ total_casos$total), "%)", sep = ""),  
+         subtitle = "Centro Saúde Lumbo", 
+        # icon = "fa-solid fa-house-chimney-medical", 
+         color = "green")
+})
+```
+
+### CS Milange
+
+```{r}
+renderValueBox({
+  valueBox(value = paste(format(total_casos$`CS de Milange`, big.mark = ","), " (",
+                       round(100 * total_casos$`CS de Milange`/ total_casos$total), "%)", sep = ""),  
+         subtitle = "Centro Saúde Milange", 
+         color = "blue")
+})
+```
+
+## Row {.tabset}
+
+### Indeterminados Acumulados
+
+```{r}
+plotly::plot_ly(data = df_diario,
+                x = ~ Data,
+                y = ~ CS_Amilcar_Cabral_cum, 
+                name = 'CS Amílcar Cabral', 
+                fillcolor = bloco4_csamilcar,
+                type = 'scatter',
+                mode = 'none', 
+                stackgroup = 'one') %>%
+    plotly::add_trace(y = ~ CS_Milange_cum,
+                      name = "CS de Milange",
+                      fillcolor = bloco3_csmilange) %>% 
+    plotly::add_trace(y = ~ CS_Lumbo_cum,
+                      name = "CS de Lumbo",
+                      fillcolor = bloco2_cslumbo) %>%
+    plotly::layout(title = "",
+                   yaxis = list(title = "Número Acumulado de Indeterminados"),
+                   xaxis = list(title = "Data", type = "date"),
+                   legend = list(x = 0.1, y = 0.9),
+                   hovermode = "compare")
+```
+
+### Casos Diários {data-icon="fa-user-plus"}
+
+```{r}
+
+df_diario <- dados %>% 
+  group_by(Data, Unidade_Sanitária) %>% 
+  count(Unidade_Sanitária) %>% 
+  rename(Contatos = n) %>% 
+  spread(Unidade_Sanitária, Contatos, fill = 0) %>% 
+  arrange(Data) %>%
+  ungroup()
+
+
+df_diario %>%
+    plotly::plot_ly() %>%
+    plotly::add_trace(
+        x = ~Data,
+        y = ~'CS Amílcar Cabral',
+        type = "scatter",
+        mode = 'lines+markers',
+        name = "CS Amílcar Cabral",
+        marker = list(color = bloco4_csamilcar),
+        line = list(color = bloco4_csamilcar , width = 2)) %>%
+    plotly::add_trace(
+        x = ~Data,
+        y = ~'CS de Milange',
+        type = "scatter",
+        mode = "lines+markers",
+        name = "CS de Milange",
+        marker = list(color = bloco3_csmilange),
+        line = list(color = bloco3_csmilange, width = 2)) %>%
+    plotly::add_trace(
+        x = ~Data,
+        y = ~'CS de lumbo',
+        type = "scatter",
+        mode = "lines+markers",
+        name = "CS de Lumbo",
+        marker = list(color = bloco2_cslumbo),
+        line = list(color = bloco2_cslumbo , width = 2)) %>% 
+    plotly::layout(
+        title = "",
+        legend = list(x = 0.1, y = 0.9),
+        yaxis = list(title = "Evolução do Número de Casos"),
+        xaxis = list(title = "Data"),
+        hovermode = "compare",
+        margin = list(b = 10, t = 10, pad = 2))
+
+```
+
+### CS Amílcar Cabral
+
+```{r}
+composition <- dados %>% 
+    group_by(Unidade_Sanitária, Resultado) %>% 
+    count() %>%
+    rename(Contatos = n) %>% 
+    spread(Unidade_Sanitária, Contatos)
+
+composition$Resultado <- as.character(composition$Resultado) # Converter para caracter para poder converter na em "Sem Resultados"
+
+composition$Resultado[is.na(composition$Resultado)] <- "Sem Resultados" # Converter NA para sem resultados 
+
+
+CS_Amílcar_Cabral <- plot_ly(composition, 
+                    labels = ~Resultado, 
+                    values = ~`CS Amílcar Cabral`, type = 'pie') %>% 
+    layout(title = 'Tipo de Resultado CS Amílcar Cabral 2ª Visita',
+           xaxis = list(showgrid = FALSE, 
+                        zeroline = FALSE, 
+                        showticklabels = FALSE),
+           yaxis = list(showgrid = FALSE, 
+                        zeroline = FALSE, 
+                        showticklabels = FALSE))
+CS_Amílcar_Cabral
+```
+
+### CS Milange
+
+```{r}
+CS_Milange <- plot_ly(composition, 
+        labels = ~Resultado, 
+        values = ~`CS de Milange`, type = 'pie') %>% 
+    layout(title = 'Tipo de Resultado CS Milange na 2ª Visita',
+           xaxis = list(showgrid = FALSE, 
+                        zeroline = FALSE, 
+                        showticklabels = FALSE),
+           yaxis = list(showgrid = FALSE, 
+                        zeroline = FALSE, 
+                        showticklabels = FALSE))
+
+CS_Milange
+```
+
+### CS de Lumbo
+
+```{r}
+CS_Lumbo <- plot_ly(composition, 
+                    labels = ~Resultado, 
+                    values = ~`CS de lumbo`, type = 'pie') %>% 
+    layout(title = 'Tipo de Resultado CS Lumbo 2ª Visita',
+           xaxis = list(showgrid = FALSE, 
+                        zeroline = FALSE, 
+                        showticklabels = FALSE),
+           yaxis = list(showgrid = FALSE, 
+                        zeroline = FALSE, 
+                        showticklabels = FALSE))
+CS_Lumbo
+```
+
+# TRL
+
+## Row
+
+### TRL 1ª Visita vs 2ªVisita
+
+```{r}
+x <- dplyr::select(Data_table_V2,Unidade_Sanitária,Data_Visita2,DaysVisita1_2)
+
+
+x %>%
+    plotly::plot_ly() %>%
+    plotly::add_trace(
+        x = ~Data_Visita2,
+        y = ~DaysVisita1_2,
+        type = "scatter",
+        mode = "lines+markers",
+        name = "CS Amílcar Cabral",
+        marker = list(color = bloco4_csamilcar),
+        line = list(color = bloco4_csamilcar , width = 2)) %>%
+    plotly::add_trace(
+        x = ~Data_Visita2,
+        y = ~DaysVisita1_2,
+        type = "scatter",
+        mode = "lines+markers",
+        name = "CS de Milange",
+        marker = list(color = bloco3_csmilange),
+        line = list(color = bloco3_csmilange, width = 2)) %>%
+    plotly::add_trace(
+        x = ~Data_Visita2,
+        y = ~DaysVisita1_2,
+        type = "scatter",
+        mode = "lines+markers",
+        name = "CS de lumbo",
+        marker = list(color = bloco2_cslumbo),
+        line = list(color = bloco2_cslumbo , width = 2)) %>% 
+    plotly::layout(
+        title = "",
+        legend = list(x = 0.1, y = 0.9),
+        yaxis = list(title = "TRL Visita 1 vs Visita 2"),
+        xaxis = list(title = "Data"),
+        hovermode = "compare",
+        margin = list(b = 10, t = 10, pad = 2))
+
+
+
+```
+
+## row {data-width="300"}
+
+### TRL ao longo do tempo Visita 2
+
+```{r}
+tbl <- reactable::reactable(x,
+                            pagination = FALSE,
+                            highlight = TRUE,
+                            height = 370,
+                            sortable = TRUE,
+                            borderless = FALSE,
+                            defaultPageSize = nrow(df_rates),
+                            defaultSortOrder = "desc",
+                            defaultSorted = "Data_Visita2",
+                            columns = list(
+                                Data_Visita2 = reactable::colDef(
+                                              name = "Data_Visita2", 
+                                          minWidth = 50, 
+                                          maxWidth = 100),
+                                DaysVisita1_2 = reactable::colDef(
+                                    name = "DaysVisita1_2",  
+                                minWidth = 50, 
+                                maxWidth = 100, 
+                                    defaultSortOrder = "desc"))
+)
+
+library(htmltools)
+htmltools::div(class = "standings",
+               htmltools::div(class = "title",
+               htmltools::h5("Clique no Nome da Coluna")),
+               tbl,
+               paste("Última Data Registrada:", max(dados$Data))
+)
+
+# Botão de download
+ui <- fluidPage(downloadButton("downloadData", "Download"))
+
+server <- function(input, output) {
+  output$downloadData <- downloadHandler(
+    filename = function() {
+      paste("x-", "TRL", ".csv", sep="")
+    },
+    content = function(file) {
+      write.csv(x, file)
+    }
+  )
+}
+
+shinyApp(ui, server)
+
+```
+
+

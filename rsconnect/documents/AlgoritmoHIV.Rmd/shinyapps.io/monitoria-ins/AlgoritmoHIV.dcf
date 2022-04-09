@@ -1,0 +1,13 @@
+name: AlgoritmoHIV
+title: AlgoritmoHIV
+username:
+account: monitoria-ins
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6007283
+bundleId: 5762496
+url: https://monitoria-ins.shinyapps.io/AlgoritmoHIV/
+when: 1649076583.1596
+lastSyncTime: 1649076583.1596
+asMultiple: TRUE
+asStatic: FALSE

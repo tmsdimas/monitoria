@@ -1,0 +1,13 @@
+name: Algoritmo
+title: Algoritmo
+username:
+account: monitoria-algoritmo
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6006206
+bundleId: 5761988
+url: https://monitoria.shinyapps.io/Algoritmo/
+when: 1649066562.10863
+lastSyncTime: 1649066562.10863
+asMultiple: FALSE
+asStatic: FALSE
